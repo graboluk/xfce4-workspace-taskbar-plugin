@@ -4,7 +4,7 @@ Workspace Taskbar is an Xfce panel plugin that combines workspace switching and 
 
 ![Workspace Taskbar panel view](screenshots/workspace-taskbar-panel.png)
 
-The plugin was **vibe coded with ChatGPT** to facilitate a personal transition from tint2 to `xfce4-panel`, then reviewed and cleaned up for public release. The original goal was to preserve a tint2-style workflow in which each desktop has a long, visually separate task area with its own window icons.
+The plugin was **vibe coded with ChatGPT** to facilitate a personal transition from tint2 to `xfce4-panel`.. The original goal was to preserve a tint2-style workflow in which each desktop has a long, visually separate task area with its own window icons.
 
 ## Features
 
@@ -35,7 +35,7 @@ On Ubuntu 24.04 / Debian-based systems:
 
 ```bash
 sudo apt install \
-    build-essential meson ninja-build pkgconf \
+    build-essential meson ninja-build pkgconf xfce4-panel \
     libgtk-3-dev libxfce4panel-2.0-dev libwnck-3-dev
 ```
 
@@ -58,7 +58,7 @@ For convenience, the repository also includes:
 ./install.sh
 ```
 
-The convenience script configures the build with `--prefix=/usr`, compiles the plugin, installs it with `sudo`, and restarts the panel.
+The convenience script checks both commands and development libraries. On APT-based systems it can offer to install missing build dependencies for you, then configures the build with `--prefix=/usr`, compiles the plugin, and installs it with `sudo`. It restarts `xfce4-panel` only when a panel process is already running, so the script can also be used before the first login to an Xfce session.
 
 ## Uninstall
 
