@@ -3,8 +3,7 @@
 #include <gtk/gtk.h>
 #include <libxfce4panel/libxfce4panel.h>
 #include <libwnck/libwnck.h>
-
-#define WORKSPACE_MIN_WIDTH 92
+#define DEFAULT_WORKSPACE_MIN_WIDTH 92
 #define ROOT_SPACING 4
 #define WORKSPACE_INNER_SPACING 2
 #define DEFAULT_ICON_SIZE 18
@@ -24,7 +23,7 @@ typedef struct
     gint panel_size;
     gint label_font_size;
     gint icon_spacing;
-
+    gint workspace_min_width;
     GtkWidget *swap_menu_item;
     GtkWidget *swap_submenu;
     gint context_workspace_number;
@@ -41,7 +40,6 @@ static void workspace_taskbar_rebuild (WorkspaceTaskbar *self);
 static void workspace_taskbar_update_css (WorkspaceTaskbar *self);
 static void workspace_taskbar_save (XfcePanelPlugin *plugin,
                                     WorkspaceTaskbar *self);
-
 static guint32
 current_event_time (void)
 {
@@ -66,7 +64,6 @@ static void
 destroy_all_children (GtkWidget *container)
 {
     GList *children = gtk_container_get_children (GTK_CONTAINER (container));
-
     for (GList *item = children; item != NULL; item = item->next)
         gtk_widget_destroy (GTK_WIDGET (item->data));
 
@@ -87,7 +84,6 @@ window_is_swappable (WnckWindow *window)
 
     if (wnck_window_is_pinned (window))
         return FALSE;
-
     type = wnck_window_get_window_type (window);
     return type != WNCK_WINDOW_DESKTOP && type != WNCK_WINDOW_DOCK;
 }
@@ -105,7 +101,6 @@ workspace_taskbar_swap_workspaces (WorkspaceTaskbar *self,
 
     if (source_number == target_number)
         return;
-
     source = wnck_screen_get_workspace (self->screen, source_number);
     target = wnck_screen_get_workspace (self->screen, target_number);
     if (source == NULL || target == NULL)
@@ -113,7 +108,6 @@ workspace_taskbar_swap_workspaces (WorkspaceTaskbar *self,
 
     source_windows = g_ptr_array_new_with_free_func (g_object_unref);
     target_windows = g_ptr_array_new_with_free_func (g_object_unref);
-
     /* Snapshot both sides before moving anything.  Stacked order gives a
      * deterministic traversal and avoids one move changing membership tests
      * for the second half of the swap. */
@@ -125,7 +119,6 @@ workspace_taskbar_swap_workspaces (WorkspaceTaskbar *self,
 
         if (!window_is_swappable (window))
             continue;
-
         workspace = wnck_window_get_workspace (window);
         if (workspace == source)
             g_ptr_array_add (source_windows, g_object_ref (window));
@@ -139,7 +132,6 @@ workspace_taskbar_swap_workspaces (WorkspaceTaskbar *self,
         wnck_window_move_to_workspace (
             WNCK_WINDOW (g_ptr_array_index (source_windows, i)),
             target);
-
     for (guint i = 0; i < target_windows->len; ++i)
         wnck_window_move_to_workspace (
             WNCK_WINDOW (g_ptr_array_index (target_windows, i)),
@@ -150,7 +142,6 @@ workspace_taskbar_swap_workspaces (WorkspaceTaskbar *self,
      * harmless and will refresh again if necessary. */
     wnck_screen_force_update (self->screen);
     self->swap_in_progress = FALSE;
-
     g_ptr_array_unref (source_windows);
     g_ptr_array_unref (target_windows);
 
@@ -170,7 +161,6 @@ swap_target_activated (GtkMenuItem *item,
 
     if (target_number < 0 || self->context_workspace_number < 0)
         return;
-
     workspace_taskbar_swap_workspaces (self,
                                        self->context_workspace_number,
                                        target_number);
@@ -186,7 +176,6 @@ workspace_taskbar_refresh_swap_menu (WorkspaceTaskbar *self)
         return;
 
     destroy_all_children (self->swap_submenu);
-
     workspace_count = wnck_screen_get_workspace_count (self->screen);
     if (self->context_workspace_number < 0 ||
         self->context_workspace_number >= workspace_count)
@@ -196,7 +185,6 @@ workspace_taskbar_refresh_swap_menu (WorkspaceTaskbar *self)
     }
 
     gtk_widget_set_sensitive (self->swap_menu_item, workspace_count > 1);
-
     workspaces = wnck_screen_get_workspaces (self->screen);
     for (GList *entry = workspaces; entry != NULL; entry = entry->next)
     {
@@ -204,7 +192,6 @@ workspace_taskbar_refresh_swap_menu (WorkspaceTaskbar *self)
         gint number = wnck_workspace_get_number (workspace);
         gchar *label_text = g_strdup_printf ("%d", number + 1);
         GtkWidget *item = gtk_menu_item_new_with_label (label_text);
-
         g_free (label_text);
         gtk_widget_set_sensitive (item,
                                   number != self->context_workspace_number);
@@ -217,7 +204,6 @@ workspace_taskbar_refresh_swap_menu (WorkspaceTaskbar *self)
                           self);
         gtk_menu_shell_append (GTK_MENU_SHELL (self->swap_submenu), item);
     }
-
     gtk_widget_show_all (self->swap_submenu);
 }
 
@@ -233,7 +219,6 @@ workspace_button_press (GtkWidget *widget,
 
     context->self->context_workspace_number = context->workspace_number;
     workspace_taskbar_refresh_swap_menu (context->self);
-
     /* Let the Xfce action-widget handler continue and open the normal plugin
      * menu, now with our source-aware Swap with submenu prepared. */
     return FALSE;
@@ -252,7 +237,6 @@ workspace_button_release (GtkWidget *widget,
     wnck_workspace_activate (workspace, event->time);
     return TRUE;
 }
-
 static gboolean
 window_button_press (GtkWidget *widget,
                      GdkEventButton *event,
@@ -267,7 +251,6 @@ window_button_press (GtkWidget *widget,
     menu = wnck_action_menu_new (window);
     if (menu == NULL)
         return TRUE;
-
     gtk_menu_set_screen (GTK_MENU (menu),
                          gtk_widget_get_screen (widget));
     gtk_widget_show (menu);
@@ -280,7 +263,6 @@ window_button_press (GtkWidget *widget,
                       "selection-done",
                       G_CALLBACK (gtk_widget_destroy),
                       NULL);
-
     return TRUE;
 }
 
@@ -299,7 +281,6 @@ window_button_clicked (GtkButton *button,
         wnck_window_minimize (window);
         return;
     }
-
     workspace = wnck_window_get_workspace (window);
     if (workspace != NULL)
         wnck_workspace_activate (workspace, timestamp);
@@ -318,7 +299,6 @@ window_icon_image (WorkspaceTaskbar *self,
     GdkPixbuf *scaled;
     GtkWidget *image;
     gint icon_size;
-
     icon_size = DEFAULT_ICON_SIZE;
     if (self->panel_size > 0)
         icon_size = CLAMP (self->panel_size - 10, 16, 22);
@@ -330,7 +310,6 @@ window_icon_image (WorkspaceTaskbar *self,
     if (source == NULL)
         return gtk_image_new_from_icon_name ("application-x-executable-symbolic",
                                              GTK_ICON_SIZE_MENU);
-
     scaled = gdk_pixbuf_scale_simple (source,
                                       icon_size,
                                       icon_size,
@@ -342,7 +321,6 @@ window_icon_image (WorkspaceTaskbar *self,
     g_object_unref (scaled);
     return image;
 }
-
 static GtkWidget *
 create_window_button (WorkspaceTaskbar *self,
                       WnckWindow *window)
@@ -358,7 +336,6 @@ create_window_button (WorkspaceTaskbar *self,
 
     gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
     gtk_widget_set_can_focus (button, FALSE);
-
     title = wnck_window_get_name (window);
     if (title != NULL)
         gtk_widget_set_tooltip_text (button, title);
@@ -371,7 +348,6 @@ create_window_button (WorkspaceTaskbar *self,
 
     if (wnck_window_or_transient_needs_attention (window))
         gtk_style_context_add_class (style, "urgent-window");
-
     g_signal_connect_data (button,
                            "clicked",
                            G_CALLBACK (window_button_clicked),
@@ -384,7 +360,6 @@ create_window_button (WorkspaceTaskbar *self,
                            g_object_ref (window),
                            unref_signal_data,
                            0);
-
     return button;
 }
 
@@ -400,7 +375,6 @@ window_belongs_to_workspace (WnckWindow *window,
 
     return wnck_window_get_workspace (window) == workspace;
 }
-
 static GtkWidget *
 create_workspace_box (WorkspaceTaskbar *self,
                       WnckWorkspace *workspace)
@@ -416,8 +390,8 @@ create_workspace_box (WorkspaceTaskbar *self,
 
     event_box = gtk_event_box_new ();
     gtk_event_box_set_visible_window (GTK_EVENT_BOX (event_box), TRUE);
-    gtk_widget_set_size_request (event_box, WORKSPACE_MIN_WIDTH, -1);
-
+    /* Minimum only: the natural width can increase to fit the icons. */
+    gtk_widget_set_size_request (event_box, self->workspace_min_width, -1);
     style = gtk_widget_get_style_context (event_box);
     gtk_style_context_add_class (style, "wt-workspace");
 
@@ -427,7 +401,6 @@ create_workspace_box (WorkspaceTaskbar *self,
 
     content = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, WORKSPACE_INNER_SPACING);
     gtk_container_add (GTK_CONTAINER (event_box), content);
-
     number_text = g_strdup_printf ("%d", wnck_workspace_get_number (workspace) + 1);
     label = gtk_label_new (number_text);
     g_free (number_text);
@@ -437,7 +410,6 @@ create_workspace_box (WorkspaceTaskbar *self,
     gtk_style_context_add_class (gtk_widget_get_style_context (label),
                                  "wt-workspace-number");
     gtk_box_pack_start (GTK_BOX (content), label, FALSE, FALSE, 2);
-
     /* Keep workspace-label spacing independent from spacing between icons. */
     window_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, self->icon_spacing);
     gtk_box_pack_start (GTK_BOX (content), window_box, TRUE, TRUE, 0);
@@ -446,7 +418,6 @@ create_workspace_box (WorkspaceTaskbar *self,
     for (GList *item = windows; item != NULL; item = item->next)
     {
         WnckWindow *window = WNCK_WINDOW (item->data);
-
         if (window_belongs_to_workspace (window, workspace))
         {
             GtkWidget *button = create_window_button (self, window);
@@ -458,7 +429,6 @@ create_workspace_box (WorkspaceTaskbar *self,
         WorkspaceContext *context = g_new (WorkspaceContext, 1);
         context->self = self;
         context->workspace_number = wnck_workspace_get_number (workspace);
-
         /* Connect before add_action_widget(), so the source workspace is
          * recorded before Xfce opens the standard plugin context menu. */
         g_signal_connect_data (event_box,
@@ -468,7 +438,6 @@ create_workspace_box (WorkspaceTaskbar *self,
                                free_signal_data,
                                0);
     }
-
     g_signal_connect_data (event_box,
                            "button-release-event",
                            G_CALLBACK (workspace_button_release),
@@ -479,7 +448,6 @@ create_workspace_box (WorkspaceTaskbar *self,
     /* Right-click keeps the normal Xfce plugin menu; our custom Swap with
      * submenu is inserted into that menu at plugin construction time. */
     xfce_panel_plugin_add_action_widget (self->plugin, event_box);
-
     return event_box;
 }
 
@@ -499,11 +467,11 @@ workspace_taskbar_rebuild (WorkspaceTaskbar *self)
         GtkWidget *workspace_box = create_workspace_box (
             self,
             WNCK_WORKSPACE (item->data));
-
+        /* Do not expand every workspace to a common width. */
         gtk_box_pack_start (GTK_BOX (self->root),
                             workspace_box,
-                            TRUE,
-                            TRUE,
+                            FALSE,
+                            FALSE,
                             0);
     }
 
@@ -516,7 +484,6 @@ window_simple_changed (WnckWindow *window,
 {
     workspace_taskbar_request_rebuild (self);
 }
-
 static void
 window_state_changed (WnckWindow *window,
                       WnckWindowState changed_mask,
@@ -534,7 +501,6 @@ watch_window (WorkspaceTaskbar *self,
         return;
 
     g_hash_table_add (self->watched_windows, window);
-
     g_signal_connect (window,
                       "name-changed",
                       G_CALLBACK (window_simple_changed),
@@ -552,7 +518,6 @@ watch_window (WorkspaceTaskbar *self,
                       G_CALLBACK (window_state_changed),
                       self);
 }
-
 static void
 active_window_changed (WnckScreen *screen,
                        WnckWindow *previous_window,
@@ -568,7 +533,6 @@ active_workspace_changed (WnckScreen *screen,
 {
     workspace_taskbar_request_rebuild (self);
 }
-
 static void
 window_opened (WnckScreen *screen,
                WnckWindow *window,
@@ -587,7 +551,6 @@ window_closed (WnckScreen *screen,
     g_hash_table_remove (self->watched_windows, window);
     workspace_taskbar_request_rebuild (self);
 }
-
 static void
 workspace_created_or_destroyed (WnckScreen *screen,
                                 WnckWorkspace *workspace,
@@ -600,7 +563,6 @@ static void
 connect_screen_signals (WorkspaceTaskbar *self)
 {
     GList *windows;
-
     g_signal_connect (self->screen,
                       "active-window-changed",
                       G_CALLBACK (active_window_changed),
@@ -625,7 +587,6 @@ connect_screen_signals (WorkspaceTaskbar *self)
                       "workspace-destroyed",
                       G_CALLBACK (workspace_created_or_destroyed),
                       self);
-
     windows = wnck_screen_get_windows (self->screen);
     for (GList *item = windows; item != NULL; item = item->next)
         watch_window (self, WNCK_WINDOW (item->data));
@@ -641,7 +602,7 @@ workspace_taskbar_read_settings (WorkspaceTaskbar *self)
 
     self->label_font_size = DEFAULT_LABEL_FONT_SIZE;
     self->icon_spacing = DEFAULT_ICON_SPACING;
-
+    self->workspace_min_width = DEFAULT_WORKSPACE_MIN_WIDTH;
     file = xfce_panel_plugin_save_location (self->plugin, TRUE);
     if (file == NULL)
         return;
@@ -656,7 +617,6 @@ workspace_taskbar_read_settings (WorkspaceTaskbar *self)
         g_free (file);
         return;
     }
-
     value = g_key_file_get_integer (key_file,
                                     "WorkspaceTaskbar",
                                     "label-font-size",
@@ -664,7 +624,6 @@ workspace_taskbar_read_settings (WorkspaceTaskbar *self)
     if (error == NULL)
         self->label_font_size = CLAMP (value, 6, 24);
     g_clear_error (&error);
-
     value = g_key_file_get_integer (key_file,
                                     "WorkspaceTaskbar",
                                     "icon-spacing",
@@ -672,11 +631,17 @@ workspace_taskbar_read_settings (WorkspaceTaskbar *self)
     if (error == NULL)
         self->icon_spacing = CLAMP (value, 0, 16);
     g_clear_error (&error);
+    value = g_key_file_get_integer (key_file,
+                                    "WorkspaceTaskbar",
+                                    "workspace-min-width",
+                                    &error);
+    if (error == NULL)
+        self->workspace_min_width = CLAMP (value, 40, 512);
+    g_clear_error (&error);
 
     g_key_file_unref (key_file);
     g_free (file);
 }
-
 static void
 workspace_taskbar_save (XfcePanelPlugin *plugin,
                         WorkspaceTaskbar *self)
@@ -688,7 +653,6 @@ workspace_taskbar_save (XfcePanelPlugin *plugin,
     file = xfce_panel_plugin_save_location (plugin, TRUE);
     if (file == NULL)
         return;
-
     key_file = g_key_file_new ();
     g_key_file_set_integer (key_file,
                             "WorkspaceTaskbar",
@@ -698,7 +662,10 @@ workspace_taskbar_save (XfcePanelPlugin *plugin,
                             "WorkspaceTaskbar",
                             "icon-spacing",
                             self->icon_spacing);
-
+    g_key_file_set_integer (key_file,
+                            "WorkspaceTaskbar",
+                            "workspace-min-width",
+                            self->workspace_min_width);
     if (!g_key_file_save_to_file (key_file, file, &error))
     {
         g_warning ("Could not save Workspace Taskbar settings to %s: %s",
@@ -717,7 +684,6 @@ workspace_taskbar_update_css (WorkspaceTaskbar *self)
     GdkScreen *gdk_screen;
     GError *error = NULL;
     gchar *css_data;
-
     css_data = g_strdup_printf (
         ".wt-workspace {"
         "  background-color: rgba(48,48,48,0.72);"
@@ -755,7 +721,6 @@ workspace_taskbar_update_css (WorkspaceTaskbar *self)
         "  background-color: rgba(194,90,70,0.65);"
         "}",
         self->label_font_size);
-
     if (self->css == NULL)
     {
         gdk_screen = gtk_widget_get_screen (GTK_WIDGET (self->plugin));
@@ -765,7 +730,6 @@ workspace_taskbar_update_css (WorkspaceTaskbar *self)
             GTK_STYLE_PROVIDER (self->css),
             GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     }
-
     if (!gtk_css_provider_load_from_data (self->css,
                                           css_data,
                                           -1,
@@ -778,7 +742,6 @@ workspace_taskbar_update_css (WorkspaceTaskbar *self)
 
     g_free (css_data);
 }
-
 static void
 label_font_size_changed (GtkSpinButton *spin,
                          WorkspaceTaskbar *self)
@@ -792,7 +755,6 @@ label_font_size_changed (GtkSpinButton *spin,
     workspace_taskbar_update_css (self);
     workspace_taskbar_save (self->plugin, self);
 }
-
 static void
 icon_spacing_changed (GtkSpinButton *spin,
                       WorkspaceTaskbar *self)
@@ -805,6 +767,39 @@ icon_spacing_changed (GtkSpinButton *spin,
     self->icon_spacing = value;
     workspace_taskbar_rebuild (self);
     workspace_taskbar_save (self->plugin, self);
+}
+
+static void
+workspace_min_width_changed (GtkSpinButton *spin,
+                             WorkspaceTaskbar *self)
+{
+    gint value = gtk_spin_button_get_value_as_int (spin);
+
+    if (value == self->workspace_min_width)
+        return;
+
+    self->workspace_min_width = value;
+    workspace_taskbar_rebuild (self);
+    workspace_taskbar_save (self->plugin, self);
+}
+
+/* Workspace count belongs to the window manager, not this plugin's
+ * per-instance settings. Preserve the control introduced in v0.1.1. */
+static void
+workspace_count_changed (GtkSpinButton *spin,
+                         WorkspaceTaskbar *self)
+{
+    gint value = gtk_spin_button_get_value_as_int (spin);
+
+    if (self->screen == NULL)
+        return;
+
+    if (value == wnck_screen_get_workspace_count (self->screen))
+        return;
+
+    wnck_screen_change_workspace_count (self->screen, value);
+    wnck_screen_force_update (self->screen);
+    workspace_taskbar_rebuild (self);
 }
 
 static void
@@ -822,7 +817,6 @@ settings_dialog_response (GtkDialog *dialog,
 {
     gtk_widget_destroy (GTK_WIDGET (dialog));
 }
-
 static void
 workspace_taskbar_configure (XfcePanelPlugin *plugin,
                              WorkspaceTaskbar *self)
@@ -833,6 +827,8 @@ workspace_taskbar_configure (XfcePanelPlugin *plugin,
     GtkWidget *label;
     GtkWidget *font_spin;
     GtkWidget *spacing_spin;
+    GtkWidget *width_spin;
+    GtkWidget *workspace_count_spin;
 
     dialog = g_object_get_data (G_OBJECT (plugin), "settings-dialog");
     if (dialog != NULL)
@@ -840,7 +836,6 @@ workspace_taskbar_configure (XfcePanelPlugin *plugin,
         gtk_window_present (GTK_WINDOW (dialog));
         return;
     }
-
     dialog = gtk_dialog_new_with_buttons (
         "Workspace Taskbar Properties",
         NULL,
@@ -850,7 +845,6 @@ workspace_taskbar_configure (XfcePanelPlugin *plugin,
         NULL);
     gtk_window_set_icon_name (GTK_WINDOW (dialog), "preferences-system-windows");
     gtk_window_set_resizable (GTK_WINDOW (dialog), FALSE);
-
     xfce_panel_plugin_take_window (plugin, GTK_WINDOW (dialog));
     xfce_panel_plugin_block_autohide (plugin, TRUE);
     g_object_set_data (G_OBJECT (plugin), "settings-dialog", dialog);
@@ -861,7 +855,6 @@ workspace_taskbar_configure (XfcePanelPlugin *plugin,
     gtk_grid_set_column_spacing (GTK_GRID (grid), 12);
     gtk_container_set_border_width (GTK_CONTAINER (grid), 12);
     gtk_container_add (GTK_CONTAINER (content), grid);
-
     label = gtk_label_new ("Workspace label font size:");
     gtk_widget_set_halign (label, GTK_ALIGN_START);
     gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
@@ -870,7 +863,6 @@ workspace_taskbar_configure (XfcePanelPlugin *plugin,
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (font_spin),
                                self->label_font_size);
     gtk_grid_attach (GTK_GRID (grid), font_spin, 1, 0, 1, 1);
-
     label = gtk_label_new ("Spacing between window icons:");
     gtk_widget_set_halign (label, GTK_ALIGN_START);
     gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 1, 1);
@@ -879,6 +871,23 @@ workspace_taskbar_configure (XfcePanelPlugin *plugin,
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (spacing_spin),
                                self->icon_spacing);
     gtk_grid_attach (GTK_GRID (grid), spacing_spin, 1, 1, 1, 1);
+    label = gtk_label_new ("Minimum workspace width (px):");
+    gtk_widget_set_halign (label, GTK_ALIGN_START);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 2, 1, 1);
+    width_spin = gtk_spin_button_new_with_range (40.0, 512.0, 1.0);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (width_spin),
+                               self->workspace_min_width);
+    gtk_grid_attach (GTK_GRID (grid), width_spin, 1, 2, 1, 1);
+
+    label = gtk_label_new ("Number of workspaces:");
+    gtk_widget_set_halign (label, GTK_ALIGN_START);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 3, 1, 1);
+
+    workspace_count_spin = gtk_spin_button_new_with_range (1.0, 16.0, 1.0);
+    gtk_spin_button_set_value (
+        GTK_SPIN_BUTTON (workspace_count_spin),
+        wnck_screen_get_workspace_count (self->screen));
+    gtk_grid_attach (GTK_GRID (grid), workspace_count_spin, 1, 3, 1, 1);
 
     g_signal_connect (font_spin,
                       "value-changed",
@@ -888,6 +897,14 @@ workspace_taskbar_configure (XfcePanelPlugin *plugin,
                       "value-changed",
                       G_CALLBACK (icon_spacing_changed),
                       self);
+    g_signal_connect (width_spin,
+                      "value-changed",
+                      G_CALLBACK (workspace_min_width_changed),
+                      self);
+    g_signal_connect (workspace_count_spin,
+                      "value-changed",
+                      G_CALLBACK (workspace_count_changed),
+                      self);
     g_signal_connect (dialog,
                       "response",
                       G_CALLBACK (settings_dialog_response),
@@ -896,7 +913,6 @@ workspace_taskbar_configure (XfcePanelPlugin *plugin,
                       "destroy",
                       G_CALLBACK (settings_dialog_destroyed),
                       self);
-
     gtk_widget_show_all (dialog);
 }
 
@@ -916,7 +932,6 @@ workspace_taskbar_free (XfcePanelPlugin *plugin,
 {
     GHashTableIter iter;
     gpointer key;
-
     if (self->screen != NULL)
         g_signal_handlers_disconnect_by_data (self->screen, self);
 
@@ -925,7 +940,6 @@ workspace_taskbar_free (XfcePanelPlugin *plugin,
         g_signal_handlers_disconnect_by_data (G_OBJECT (key), self);
 
     g_clear_pointer (&self->watched_windows, g_hash_table_unref);
-
     if (self->css != NULL)
     {
         GdkScreen *gdk_screen = gtk_widget_get_screen (GTK_WIDGET (plugin));
@@ -942,7 +956,6 @@ static WorkspaceTaskbar *
 workspace_taskbar_new (XfcePanelPlugin *plugin)
 {
     WorkspaceTaskbar *self;
-
     self = g_new0 (WorkspaceTaskbar, 1);
     self->plugin = plugin;
     self->panel_size = xfce_panel_plugin_get_size (plugin);
@@ -951,8 +964,7 @@ workspace_taskbar_new (XfcePanelPlugin *plugin)
     workspace_taskbar_read_settings (self);
 
     self->root = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, ROOT_SPACING);
-    gtk_box_set_homogeneous (GTK_BOX (self->root), TRUE);
-
+    gtk_box_set_homogeneous (GTK_BOX (self->root), FALSE);
     self->wnck_handle = wnck_handle_new (WNCK_CLIENT_TYPE_PAGER);
     self->screen = wnck_handle_get_default_screen (self->wnck_handle);
     wnck_screen_force_update (self->screen);
@@ -970,10 +982,9 @@ workspace_taskbar_construct (XfcePanelPlugin *plugin)
     WorkspaceTaskbar *self;
 
     self = workspace_taskbar_new (plugin);
-
     gtk_container_add (GTK_CONTAINER (plugin), self->root);
-    xfce_panel_plugin_set_expand (plugin, TRUE);
-
+    /* Content-driven width: do not claim all available panel space. */
+    xfce_panel_plugin_set_expand (plugin, FALSE);
     self->swap_menu_item = gtk_menu_item_new_with_label ("Swap with");
     self->swap_submenu = gtk_menu_new ();
     gtk_menu_item_set_submenu (GTK_MENU_ITEM (self->swap_menu_item),
@@ -983,7 +994,6 @@ workspace_taskbar_construct (XfcePanelPlugin *plugin)
         plugin,
         GTK_MENU_ITEM (self->swap_menu_item));
     gtk_widget_show_all (self->swap_menu_item);
-
     xfce_panel_plugin_menu_show_configure (plugin);
     g_signal_connect (plugin,
                       "configure-plugin",
@@ -993,7 +1003,6 @@ workspace_taskbar_construct (XfcePanelPlugin *plugin)
                       "save",
                       G_CALLBACK (workspace_taskbar_save),
                       self);
-
     g_signal_connect (plugin,
                       "size-changed",
                       G_CALLBACK (plugin_size_changed),
