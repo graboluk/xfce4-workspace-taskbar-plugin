@@ -5,7 +5,8 @@ Workspace Taskbar is an Xfce panel plugin that combines workspace switching and 
 ![Workspace Taskbar panel view](screenshots/workspace-taskbar-panel.png)
 The plugin was **vibe coded with ChatGPT** to facilitate a personal transition from tint2 to `xfce4-panel`.. The original goal was to preserve a tint2-style workflow in which each desktop has a long, visually separate task area with its own window icons.
 ## Features
-- Persistent workspace compartments with independent, content-driven widths (92 px minimum by default).
+- Workspace compartments with independent, content-driven widths (92 px minimum by default).
+- Optional full-width mode: share a fixed Xfce panel allocation dynamically among workspaces, without growing the plugin when more windows appear.
 - One icon per window; no application grouping.
 - Active workspace is visually distinguished.
 - Active and urgent windows are highlighted.
@@ -16,7 +17,7 @@ The plugin was **vibe coded with ChatGPT** to facilitate a personal transition f
 - Right-click empty workspace area for the normal Xfce plugin menu and **Swap with** submenu.
 - Swap the contents of two workspaces while keeping workspace numbers and the active workspace fixed.
 - Pinned windows appear on every workspace and are left untouched by swaps.
-- Configurable minimum workspace width, workspace-number font size, spacing between window icons, and number of workspaces.
+- Configurable minimum workspace width, full-width mode, workspace-number font size, spacing between window icons, and number of workspaces.
 ![Full desktop example](screenshots/workspace-taskbar-full-desktop.png)
 ## Scope
 
@@ -79,9 +80,14 @@ Open the Xfce plugin context menu and choose **Properties**. The current setting
 - workspace-number font size: 6–24 px;
 - spacing between window icons: 0–16 px;
 - minimum workspace width: 40–512 px (default 92 px);
+- **Stretch to fill available panel width**: off by default;
 - number of workspaces: 1–16.
 
-Each workspace uses its minimum width when empty and grows independently to fit its window icons. The plugin does not expand into unused panel space. The font, icon spacing, and minimum width settings are stored per panel-plugin instance. **Number of workspaces** changes the desktop-wide workspace count through the window manager, and is therefore not a per-plugin setting. Reducing the count removes workspaces from the end.
+In **compact mode** (the default), each workspace uses its minimum width when empty and grows independently to fit its window icons; the plugin does not expand into unused panel space.
+
+In **full-width mode**, Xfce gives the plugin its share of the *available* panel space. Workspaces divide that fixed space: each workspace has a configured minimum, and busier workspaces receive enough extra space to fit their icons when available; remaining space is shared among workspaces. New icons can take space from other workspaces, but do not increase the plugin’s minimum width. If there are more icons than can fit even after all workspaces contract to their minimum, any overflowing icons stay inside a clipped viewport for that workspace instead of pushing other panel items off-screen. As with any minimum-width setting, if the sum of workspace minima alone exceeds the panel’s available width, the panel cannot satisfy all of those minima. Reduce the minimum or workspace count in that case.
+
+The font, icon spacing, minimum width, and full-width setting are stored per panel-plugin instance. **Number of workspaces** changes the desktop-wide workspace count through the window manager, and is therefore not a per-plugin setting. Reducing the count removes workspaces from the end.
 ## Workspace swapping
 
 The **Swap with** submenu exchanges ordinary windows between two workspaces. Both sides are snapshotted before any move occurs. Workspace numbers remain fixed, the currently active workspace number does not change, and pinned windows are ignored.

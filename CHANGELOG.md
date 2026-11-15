@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 — 2026-11-15
+- Add an optional **Stretch to fill available panel width** setting (off by default).
+- In stretch mode, redistribute fixed panel width among workspaces according to their natural icon widths, instead of making all workspaces equal.
+- Use a constrained, non-scrolling-bar viewport for icon rows in stretch mode, so icon-count changes do not raise a workspace's minimum width and displace neighbouring panel widgets.
+- Preserve existing settings, including minimum width and number of workspaces.
+
 ## 0.1.2 — 2026-11-15
 - Size workspace compartments independently according to window icons.
 - Make the per-workspace minimum width configurable (92 px by default).

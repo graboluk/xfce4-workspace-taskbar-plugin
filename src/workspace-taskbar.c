@@ -4,6 +4,7 @@
 #include <libxfce4panel/libxfce4panel.h>
 #include <libwnck/libwnck.h>
 #define DEFAULT_WORKSPACE_MIN_WIDTH 92
+#define DEFAULT_STRETCH_TO_FILL FALSE
 #define ROOT_SPACING 4
 #define WORKSPACE_INNER_SPACING 2
 #define DEFAULT_ICON_SIZE 18
@@ -24,6 +25,7 @@ typedef struct
     gint label_font_size;
     gint icon_spacing;
     gint workspace_min_width;
+    gboolean stretch_to_fill;
     GtkWidget *swap_menu_item;
     GtkWidget *swap_submenu;
     gint context_workspace_number;
@@ -383,6 +385,7 @@ create_workspace_box (WorkspaceTaskbar *self,
     GtkWidget *content;
     GtkWidget *label;
     GtkWidget *window_box;
+    GtkWidget *icon_view;
     GtkStyleContext *style;
     WnckWorkspace *active_workspace;
     GList *windows;
@@ -412,7 +415,34 @@ create_workspace_box (WorkspaceTaskbar *self,
     gtk_box_pack_start (GTK_BOX (content), label, FALSE, FALSE, 2);
     /* Keep workspace-label spacing independent from spacing between icons. */
     window_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, self->icon_spacing);
-    gtk_box_pack_start (GTK_BOX (content), window_box, TRUE, TRUE, 0);
+    if (self->stretch_to_fill)
+    {
+        /* The icons' NATURAL width drives sharing of the panel space, but
+         * their MINIMUM width must not grow with the number of windows.
+         * Otherwise GTK can enlarge the plugin beyond its allocated share
+         * and push neighbouring panel items off screen.
+         *
+         * EXTERNAL keeps the scrollbars invisible while allowing the
+         * viewport to become narrower than its contents.  The natural
+         * width is propagated so GTK gives busy workspaces spare pixels
+         * before splitting the remainder among all workspaces. */
+        icon_view = gtk_scrolled_window_new (NULL, NULL);
+        gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (icon_view),
+                                        GTK_POLICY_EXTERNAL,
+                                        GTK_POLICY_NEVER);
+        gtk_scrolled_window_set_min_content_width (
+            GTK_SCROLLED_WINDOW (icon_view), 1);
+        gtk_scrolled_window_set_propagate_natural_width (
+            GTK_SCROLLED_WINDOW (icon_view), TRUE);
+        gtk_scrolled_window_set_shadow_type (
+            GTK_SCROLLED_WINDOW (icon_view), GTK_SHADOW_NONE);
+        gtk_container_add (GTK_CONTAINER (icon_view), window_box);
+        gtk_box_pack_start (GTK_BOX (content), icon_view, TRUE, TRUE, 0);
+    }
+    else
+    {
+        gtk_box_pack_start (GTK_BOX (content), window_box, TRUE, TRUE, 0);
+    }
 
     windows = wnck_screen_get_windows (self->screen);
     for (GList *item = windows; item != NULL; item = item->next)
@@ -467,11 +497,13 @@ workspace_taskbar_rebuild (WorkspaceTaskbar *self)
         GtkWidget *workspace_box = create_workspace_box (
             self,
             WNCK_WORKSPACE (item->data));
-        /* Do not expand every workspace to a common width. */
+        /* Compact: use each child's natural width.  Stretch: share
+         * the fixed available width, preserving the natural width
+         * preferences of the busier workspaces. */
         gtk_box_pack_start (GTK_BOX (self->root),
                             workspace_box,
-                            FALSE,
-                            FALSE,
+                            self->stretch_to_fill,
+                            self->stretch_to_fill,
                             0);
     }
 
@@ -603,6 +635,7 @@ workspace_taskbar_read_settings (WorkspaceTaskbar *self)
     self->label_font_size = DEFAULT_LABEL_FONT_SIZE;
     self->icon_spacing = DEFAULT_ICON_SPACING;
     self->workspace_min_width = DEFAULT_WORKSPACE_MIN_WIDTH;
+    self->stretch_to_fill = DEFAULT_STRETCH_TO_FILL;
     file = xfce_panel_plugin_save_location (self->plugin, TRUE);
     if (file == NULL)
         return;
@@ -638,6 +671,15 @@ workspace_taskbar_read_settings (WorkspaceTaskbar *self)
     if (error == NULL)
         self->workspace_min_width = CLAMP (value, 40, 512);
     g_clear_error (&error);
+    self->stretch_to_fill = g_key_file_get_boolean (key_file,
+                                                    "WorkspaceTaskbar",
+                                                    "stretch-to-fill",
+                                                    &error);
+    if (error != NULL)
+    {
+        self->stretch_to_fill = DEFAULT_STRETCH_TO_FILL;
+        g_clear_error (&error);
+    }
 
     g_key_file_unref (key_file);
     g_free (file);
@@ -666,6 +708,10 @@ workspace_taskbar_save (XfcePanelPlugin *plugin,
                             "WorkspaceTaskbar",
                             "workspace-min-width",
                             self->workspace_min_width);
+    g_key_file_set_boolean (key_file,
+                            "WorkspaceTaskbar",
+                            "stretch-to-fill",
+                            self->stretch_to_fill);
     if (!g_key_file_save_to_file (key_file, file, &error))
     {
         g_warning ("Could not save Workspace Taskbar settings to %s: %s",
@@ -783,6 +829,24 @@ workspace_min_width_changed (GtkSpinButton *spin,
     workspace_taskbar_save (self->plugin, self);
 }
 
+static void
+stretch_to_fill_changed (GtkToggleButton *toggle,
+                         WorkspaceTaskbar *self)
+{
+    gboolean enabled = gtk_toggle_button_get_active (toggle);
+
+    if (self->stretch_to_fill == enabled)
+        return;
+
+    self->stretch_to_fill = enabled;
+    workspace_taskbar_rebuild (self);
+    /* Xfce controls the outer width; GTK divides that allocation among
+     * workspaces. Rebuild first, so newly added icons cannot force a
+     * one-frame minimum-width expansion on the panel. */
+    xfce_panel_plugin_set_expand (self->plugin, enabled);
+    workspace_taskbar_save (self->plugin, self);
+}
+
 /* Workspace count belongs to the window manager, not this plugin's
  * per-instance settings. Preserve the control introduced in v0.1.1. */
 static void
@@ -828,6 +892,7 @@ workspace_taskbar_configure (XfcePanelPlugin *plugin,
     GtkWidget *font_spin;
     GtkWidget *spacing_spin;
     GtkWidget *width_spin;
+    GtkWidget *stretch_check;
     GtkWidget *workspace_count_spin;
 
     dialog = g_object_get_data (G_OBJECT (plugin), "settings-dialog");
@@ -879,15 +944,21 @@ workspace_taskbar_configure (XfcePanelPlugin *plugin,
                                self->workspace_min_width);
     gtk_grid_attach (GTK_GRID (grid), width_spin, 1, 2, 1, 1);
 
+    stretch_check = gtk_check_button_new_with_label (
+        "Stretch to fill available panel width");
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (stretch_check),
+                                  self->stretch_to_fill);
+    gtk_grid_attach (GTK_GRID (grid), stretch_check, 0, 3, 2, 1);
+
     label = gtk_label_new ("Number of workspaces:");
     gtk_widget_set_halign (label, GTK_ALIGN_START);
-    gtk_grid_attach (GTK_GRID (grid), label, 0, 3, 1, 1);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 4, 1, 1);
 
     workspace_count_spin = gtk_spin_button_new_with_range (1.0, 16.0, 1.0);
     gtk_spin_button_set_value (
         GTK_SPIN_BUTTON (workspace_count_spin),
         wnck_screen_get_workspace_count (self->screen));
-    gtk_grid_attach (GTK_GRID (grid), workspace_count_spin, 1, 3, 1, 1);
+    gtk_grid_attach (GTK_GRID (grid), workspace_count_spin, 1, 4, 1, 1);
 
     g_signal_connect (font_spin,
                       "value-changed",
@@ -900,6 +971,10 @@ workspace_taskbar_configure (XfcePanelPlugin *plugin,
     g_signal_connect (width_spin,
                       "value-changed",
                       G_CALLBACK (workspace_min_width_changed),
+                      self);
+    g_signal_connect (stretch_check,
+                      "toggled",
+                      G_CALLBACK (stretch_to_fill_changed),
                       self);
     g_signal_connect (workspace_count_spin,
                       "value-changed",
@@ -983,8 +1058,9 @@ workspace_taskbar_construct (XfcePanelPlugin *plugin)
 
     self = workspace_taskbar_new (plugin);
     gtk_container_add (GTK_CONTAINER (plugin), self->root);
-    /* Content-driven width: do not claim all available panel space. */
-    xfce_panel_plugin_set_expand (plugin, FALSE);
+    /* Compact mode uses natural widths; full-width mode uses the width
+     * allocated by Xfce, without enlarging it when windows are added. */
+    xfce_panel_plugin_set_expand (plugin, self->stretch_to_fill);
     self->swap_menu_item = gtk_menu_item_new_with_label ("Swap with");
     self->swap_submenu = gtk_menu_new ();
     gtk_menu_item_set_submenu (GTK_MENU_ITEM (self->swap_menu_item),
